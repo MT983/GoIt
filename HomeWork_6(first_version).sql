@@ -50,7 +50,7 @@ select
 	cpc,
 	case when lag(cpc) over(partition by utm_campaign order by ad_month)!=0 
 	then round((cpc-lag(cpc) over(partition by utm_campaign order by ad_month))/lag(cpc) over(partition by utm_campaign order by ad_month),2) end as cpc_1month,
-    cpm,
+        cpm,
 	case when lag(cpm) over(partition by utm_campaign order by ad_month)!=0 
 	then round((cpm-lag(cpm) over(partition by utm_campaign order by ad_month))/lag(cpm) over(partition by utm_campaign order by ad_month),2) end as cpm_1month,
 	ctr,
@@ -60,4 +60,4 @@ select
 	case when lag(romi) over(partition by utm_campaign order by ad_month)!=0 
 	then round((romi-lag(romi) over(partition by utm_campaign order by ad_month))/lag(romi) over(partition by utm_campaign order by ad_month),2) end as romi_1month
 from facebook_google_data
-order by 2,11;
+order by 2,1;

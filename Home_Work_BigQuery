@@ -1,0 +1,164 @@
+--Завдання 1. Підготовка даних для побудови звітів у BI системах
+
+--Створи запит для отримання таблиці з інформацією про події, користувачів та сесії в GA4. В результаті виконання запиту ми маємо отримати таблицю, що включатиме в себе такі поля:
+
+--event_timestamp - дата та час події (тип даних має бути timestamp).
+---user_pseudo_id - анонімний ідентифікатор користувача в GA4
+--session_id - ідентифікатор сесії подій в GA4
+--event_name - назва події
+--country - країна користувача сайту
+--device_category - категорія пристрою користувача сайту
+--source - джерело відвідування сайту
+--medium - medium відвідування сайту
+--campaign - назва кампанії відвідування сайту
+--Таблиця має включати лише дані за 2021 рік, та дані з таких подій:
+
+--Початок сесії на сайті
+--Перегляд товару
+--Додавання товару до корзини
+--Початок оформлення замовлення
+--Додавання інформації про доставку
+--Додавання платіжної інформації
+--Покупка
+
+select 
+    date(timestamp_micros(event_timestamp)) as event_date,
+    user_pseudo_id,
+    event_name,
+    (select value.int_value from ga4.event_params where key = 'ga_session_id') as session_id,
+    geo.country,
+    device.category,
+    traffic_source.source,
+    traffic_source.medium,
+    traffic_source.name as campaign
+from  `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*` as ga4
+where _table_suffix between '20210101' and '20211231' and event_name in ('session_start', 'view_promotion', 'add_to_cart', 'begin_checkout', 'add_shipping_info', 'add_payment_info', 'purchase')
+order by 1;
+
+--Завдання 2. Розрахунок конверсій в розрізі дат та каналів трафіку
+--Створи запит для отримання таблиці з інформацією про конверсії від початку сесії до покупки. Результуюча таблиця має включати в себе такі поля:
+
+--event_date - дата старту сесії, що отримана з поля event_timestamp
+--source - джерело відвідування сайту
+--medium - medium відвідування сайту
+--campaign - назва кампанії відвідування сайту
+--user_sessions_count - кількість унікальних сесій в унікальних користувачів у відповідну дату та для відповідного каналу трафіку.
+--visit_to_cart - конверсія від початку сесії на сайті до додавання товару в корзину (у відповідну дату та для відповідного каналу трафіку)
+--visit_to_checkout - конверсія від початку сесії на сайті до спроби оформити замвовлення (у відповідну дату та для відповідного каналу трафіку)
+--Visit_to_purchase - конверсія від початку сесії на сайті до покупки (у відповідну дату та для відповідного каналу трафіку)
+--Примітка Зверни увагу, що різні користувачі можуть мати однакові ідентифікатори сесій. Тому щоб порахувати унікальні сесії унікальних користувачів, треба враховувати не тільки ідентифікатор сесії, а й ідентифікатор користувача.
+with first_task as (select 
+    date(timestamp_micros(event_timestamp)) as event_date,
+    (user_pseudo_id ||cast((select value.int_value from ga4.event_params where key = 'ga_session_id') as string)) as user_session_id,
+    event_name,
+    traffic_source.source,
+    traffic_source.medium,
+    traffic_source.name as campaign
+from  `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*` as ga4
+where _table_suffix between '20210101' and '20211231'and event_name in ('session_start', 'add_to_cart', 'begin_checkout','purchase')),
+task as (select
+    event_date,
+    source,
+    medium,
+    campaign,
+    count( distinct user_session_id) as total_user_session_id,
+    count( distinct case when event_name='session_start' then user_session_id end) as session_start,
+    count( distinct case when event_name='add_to_cart' then user_session_id end) as add_to_cart,
+    count( distinct case when event_name='begin_checkout' then user_session_id end) as begin_checkout,
+    count( distinct case when event_name='purchase' then user_session_id end) as purchase,
+from first_task 
+group by 1,2,3,4)
+select 
+event_date,
+    source,
+    medium,
+    campaign,
+    total_user_session_id,
+    coalesce(round(cast (add_to_cart as numeric)/session_start,4)*100,0) as visit_to_cart,
+    coalesce(round(cast (begin_checkout as numeric)/session_start,4)*100,0) as visit_to_checkout,
+    coalesce(round(cast (purchase as numeric)/session_start,4)*100,0) as visit_to_purchase
+from task
+order by 1;
+
+--Завдання 3. Порівняння конверсії між різними посадковими сторінками
+--Для виконання цієї задачі тобі потрібно буде отримати page path (шлях до сторінки без  адреси домену та без параметрів посилання) з page_location в події початку сесії.
+
+--Для кожного унікального page page початку сесії порахуй такі метрики на основі даних за 2020 рік:
+
+--Кількість унікальних сесій в унікальних користувачів
+--Кількість покупок
+--Конверсія від початку сесії в покупку
+--Примітка Події старту сесії та покупки можуть мати різні url. Тому злити подію старту сесії з подією покупки можна за ідентифікатором користувача та ідентифікатором сесії.
+with first_task as (select 
+    date(timestamp_micros(event_timestamp)) as event_date,
+    (user_pseudo_id ||cast((select value.int_value from ga4.event_params where key = 'ga_session_id') as string)) as user_session_id,
+    event_name,
+    traffic_source.source,
+    traffic_source.medium,
+    traffic_source.name as campaign
+from  `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*` as ga4
+where _table_suffix between '20210101' and '20211231'and event_name in ('session_start', 'add_to_cart', 'begin_checkout','purchase')),
+task as (select
+    event_date,
+    source,
+    medium,
+    campaign,
+    count( distinct user_session_id) as total_user_session_id,
+    count( distinct case when event_name='session_start' then user_session_id end) as session_start,
+    count( distinct case when event_name='add_to_cart' then user_session_id end) as add_to_cart,
+    count( distinct case when event_name='begin_checkout' then user_session_id end) as begin_checkout,
+    count( distinct case when event_name='purchase' then user_session_id end) as purchase,
+from first_task 
+group by 1,2,3,4)
+select 
+event_date,
+    source,
+    medium,
+    campaign,
+    total_user_session_id,
+    coalesce(round(cast (add_to_cart as numeric)/session_start,4)*100,0) as visit_to_cart,
+    coalesce(round(cast (begin_checkout as numeric)/session_start,4)*100,0) as visit_to_checkout,
+    coalesce(round(cast (purchase as numeric)/session_start,4)*100,0) as visit_to_purchase
+from task
+order by 1;
+
+--Завдання 4. Перевірка кореляції між залученістю користувачів та здійсненням покупок
+--Для кожної унікальної сесії визнач:
+
+--Чи був користувач залучений під час цієї сесії (якщо значення параметру session_engaged = ‘1’)
+--Загальний час активності користувача під час сесії (сума параметру engagement_time_msec з кожної події сесії)
+--Чи відбулася покупка під час сесії
+--Порахуй значення коефіцієнту кореляції:
+--між п.1 та п.3
+--між п.2 та п.3
+with fourth_task as (
+    select
+     concat(user_pseudo_id,(select value.int_value from ga4.event_params where key = 'ga_session_id'))as user_session_id,
+     case when sum(coalesce((select coalesce(cast(value.string_value as integer ), cast(value.int_value  as integer ), cast(value.float_value  as integer)) from ga4.event_params where key = 'session_engaged'), 0)) > 0 then 1 else 0 end as session_engaged,
+     sum(coalesce((select value.int_value from ga4.event_params where key = 'engagement_time_msec'), 0)) as total_time,
+     max(case when event_name = 'purchase' then 1 else 0 end) as purchase,
+     from `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*` as ga4
+    group by 1)
+select 
+     round(corr(session_engaged,purchase),2) as corr_1,
+     round(corr(total_time,purchase),2) as corr_2
+from fourth_task;
+
+with fourth_task as (
+    select
+     user_pseudo_id||cast((select value.int_value from ga4.event_params where key = 'ga_session_id') as string) as user_session_id,
+     case when sum(coalesce((select coalesce(cast(value.string_value as integer ), cast(value.int_value  as integer ), cast(value.float_value  as integer)) from ga4.event_params where key = 'session_engaged'), 0)) > 0 then 1 else 0 end as session_engaged,
+     sum(coalesce((select value.int_value from ga4.event_params where key = 'engagement_time_msec'), 0)) as total_time,
+     from `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*` as ga4
+    group by 1),
+four as (select 
+      user_pseudo_id||cast((select value.int_value from unnest(event_params) where key = 'ga_session_id') as string) as user_session_id,
+      max(case when event_name = 'purchase' then 1 else 0 end) as purchase
+      from `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*`as ga4
+      where event_name = 'purchase'
+      group by 1)
+select 
+     round(corr(session_engaged,case when purchase is not null then 1 else 0 end),2) as corr_1,
+     round(corr(total_time,case when purchase is not null then 1 else 0 end),2) as corr_2
+   from fourth_task
+   left join four on four.user_session_id = fourth_task.user_session_id;

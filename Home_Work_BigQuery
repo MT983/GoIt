@@ -19,7 +19,7 @@
 --Початок оформлення замовлення
 --Додавання інформації про доставку
 --Додавання платіжної інформації
---Покупка
+--Покупка https://console.cloud.google.com/bigquery?sq=613444296666:abba294d18db4bab8e6e8dcd0805e524
 
 select 
     date(timestamp_micros(event_timestamp)) as event_date,
@@ -47,6 +47,7 @@ order by 1;
 --visit_to_checkout - конверсія від початку сесії на сайті до спроби оформити замвовлення (у відповідну дату та для відповідного каналу трафіку)
 --Visit_to_purchase - конверсія від початку сесії на сайті до покупки (у відповідну дату та для відповідного каналу трафіку)
 --Примітка Зверни увагу, що різні користувачі можуть мати однакові ідентифікатори сесій. Тому щоб порахувати унікальні сесії унікальних користувачів, треба враховувати не тільки ідентифікатор сесії, а й ідентифікатор користувача.
+--https://console.cloud.google.com/bigquery?sq=613444296666:4216a703d37c492f98e6cc1fe6bdf87f
 with first_task as (select 
     date(timestamp_micros(event_timestamp)) as event_date,
     (user_pseudo_id ||cast((select value.int_value from ga4.event_params where key = 'ga_session_id') as string)) as user_session_id,
@@ -89,6 +90,7 @@ order by 1;
 --Кількість покупок
 --Конверсія від початку сесії в покупку
 --Примітка Події старту сесії та покупки можуть мати різні url. Тому злити подію старту сесії з подією покупки можна за ідентифікатором користувача та ідентифікатором сесії.
+--https://console.cloud.google.com/bigquery?sq=613444296666:d6dfd19db5524f89a6c13cc8e5c1e852
 with first_task as (select 
     date(timestamp_micros(event_timestamp)) as event_date,
     (user_pseudo_id ||cast((select value.int_value from ga4.event_params where key = 'ga_session_id') as string)) as user_session_id,
@@ -130,7 +132,7 @@ order by 1;
 --Чи відбулася покупка під час сесії
 --Порахуй значення коефіцієнту кореляції:
 --між п.1 та п.3
---між п.2 та п.3
+--між п.2 та п.3 https://console.cloud.google.com/bigquery?sq=613444296666:ec53c7e5bd0849c693422595daac3c13
 with fourth_task as (
     select
      concat(user_pseudo_id,(select value.int_value from ga4.event_params where key = 'ga_session_id'))as user_session_id,

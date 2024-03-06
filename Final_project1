@@ -1,0 +1,35 @@
+with first as (select 
+    (user_pseudo_id ||cast((select value.int_value from ga4.event_params where key = 'ga_session_id') as string)) as user_session_id,
+    geo.country as country,
+    device.category as device,
+    device.language as device_language,
+    device.operating_system as operating_system,
+    traffic_source.source as source,
+    traffic_source.medium as medium,
+    traffic_source.name as campaign,
+    case when event_name='session_start'then (case when ends_with((select value.string_value from ga4.event_params where key = 'page_location'), '.html') 
+    then null else regexp_extract((select value.string_value from ga4.event_params where key = 'page_location'), r'[^/]+$', 1)end) end as landing_page_location,
+from  `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*` as ga4
+where event_name ='session_start'),
+second as (select 
+    date(timestamp_micros(event_timestamp)) as event_date,
+    (user_pseudo_id ||cast((select value.int_value from ga4.event_params where key = 'ga_session_id') as string)) as user_session_id,
+    event_name,
+    ecommerce.purchase_revenue as purchase_revenue
+from  `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*` as ga4
+where event_name in ('session_start', 'view_item', 'add_to_cart', 'begin_checkout', 'add_shipping_info', 'add_payment_info', 'purchase'))
+select
+    second.event_date,
+    first.user_session_id,
+    event_name,
+    country,
+    device,
+    device_language,
+    operating_system,
+    source,
+    medium,
+    campaign,
+    second.purchase_revenue,
+    landing_page_location
+from  first
+    left join second on second.user_session_id=first.user_session_id
